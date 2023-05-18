@@ -21,8 +21,8 @@ pub const ShaCheck = enum {
     }
 };
 
-step: std.build.Step,
-builder: *std.build.Builder,
+step: std.Build.Step,
+builder: *std.Build,
 url: []const u8,
 name: []const u8,
 branch: ?[]const u8 = null,
@@ -39,7 +39,7 @@ pub fn defaultFetchOption(b: *std.build.Builder) bool {
     return cached_default_fetch_option.?;
 }
 
-pub fn create(b: *std.build.Builder, opt: struct {
+pub fn create(b: *std.Build, opt: struct {
     url: []const u8,
     branch: ?[]const u8 = null,
     sha: []const u8,
@@ -50,14 +50,19 @@ pub fn create(b: *std.build.Builder, opt: struct {
     var result = b.allocator.create(GitRepoStep) catch @panic("memory");
     const name = std.fs.path.basename(opt.url);
     result.* = GitRepoStep{
-        .step = std.build.Step.init(.custom, "clone a git repository", b.allocator, make),
+        .step = std.Build.Step.init(.{
+            .id = .custom,
+            .name = "clone a git repository",
+            .owner = b,
+            .makeFn = make,
+        }),
         .builder = b,
         .url = opt.url,
         .name = name,
         .branch = opt.branch,
         .sha = opt.sha,
         .path = if (opt.path) |p| (b.allocator.dupe(u8, p) catch @panic("memory")) else (std.fs.path.resolve(b.allocator, &[_][]const u8{
-            b.build_root,
+            b.build_root.path orelse ".",
             "dep",
             name,
         })) catch @panic("memory"),
@@ -79,7 +84,8 @@ fn hasDependency(step: *const std.build.Step, dep_candidate: *const std.build.St
     return false;
 }
 
-fn make(step: *std.build.Step) !void {
+fn make(step: *std.build.Step, prog_node: *std.Progress.Node) anyerror!void {
+_ = prog_node;
     const self = @fieldParentPtr(GitRepoStep, "step", step);
 
     std.fs.accessAbsolute(self.path, .{}) catch {
@@ -140,7 +146,7 @@ fn checkSha(self: GitRepoStep) !void {
                 "rev-parse",
                 "HEAD",
             },
-            .cwd = self.builder.build_root,
+            .cwd = self.builder.build_root.path orelse ".",
             .env_map = self.builder.env_map,
         }) catch |e| break :blk .{ .failed = e };
         try std.io.getStdErr().writer().writeAll(result.stderr);
@@ -183,7 +189,7 @@ fn run(builder: *std.build.Builder, argv: []const []const u8) !void {
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
-    child.cwd = builder.build_root;
+    child.cwd = builder.build_root.path;
     child.env_map = builder.env_map;
 
     try child.spawn();

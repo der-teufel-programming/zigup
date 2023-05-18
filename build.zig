@@ -20,15 +20,16 @@ fn buildNoreturn(b: *Builder) noreturn {
 }
 fn buildOrFail(b: *Builder) anyerror {
     const ziget_repo = GitRepoStep.create(b, .{
-        .url = "https://github.com/marler8997/ziget",
+        .url = "https://github.com/der-teufel-programming/ziget",
         .branch = null,
         .sha = @embedFile("zigetsha"),
     });
     const build2 = addBuild(b, .{ .path = "build2.zig" }, .{});
     build2.addArgs(try getBuildArgs(b));
-    ziget_repo.step.make() catch |e| return e;
-    build2.step.make() catch |err| switch (err) {
-        error.UnexpectedExitCode => std.os.exit(0xff), // error already printed by subprocess
+    var empty_node: std.Progress.Node = undefined;
+    ziget_repo.step.make(&empty_node) catch |e| return e;
+    build2.step.make(&empty_node) catch |err| switch (err) {
+        //error.UnexpectedExitCode => std.os.exit(0xff), // error already printed by subprocess
         else => |e| return e,
     };
     std.os.exit(0);
@@ -49,6 +50,6 @@ pub fn addBuild(self: *Builder, build_file: std.build.FileSource, _: struct { })
     run_step.addArg("--build-file");
     run_step.addFileSourceArg(build_file);
     run_step.addArg("--cache-dir");
-    run_step.addArg(self.pathFromRoot(self.cache_root));
+    run_step.addArg(self.pathFromRoot(self.cache_root.path orelse "."));
     return run_step;
 }
